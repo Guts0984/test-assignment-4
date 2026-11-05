@@ -17,3 +17,5 @@ allowBuilds:
   cpu-features: false
   protobufjs: false
   ssh2: false
+  # Only prints a donation message (swagger-ui).
+  "@scarf/scarf": false

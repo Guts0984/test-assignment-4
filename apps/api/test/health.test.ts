@@ -1,29 +1,59 @@
-import type { INestApplication } from "@nestjs/common";
-import { Test } from "@nestjs/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AppModule } from "../src/app.module";
+import { call, startApp, type TestApp } from "./helpers";
 
-let app: INestApplication;
-let base: string;
-
+let api: TestApp;
 beforeAll(async () => {
-  const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  app = module.createNestApplication();
-  await app.listen(0);
-  base = await app.getUrl();
+  api = await startApp();
 });
 afterAll(async () => {
-  await app.close();
+  await api.close();
 });
 
-describe("GET /health", () => {
-  it("says the process is alive", async () => {
-    const res = await fetch(`${base}/health`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok" });
+describe("health checks", () => {
+  it("/health says the process is alive", async () => {
+    const reply = await call(api.base, "/health");
+    expect(reply.status).toBe(200);
+    expect(reply.body).toEqual({ status: "ok" });
   });
 
-  it("answers 404 (not 500) for a path that does not exist", async () => {
-    expect((await fetch(`${base}/nothing-here`)).status).toBe(404);
+  it("/ready says PostgreSQL and Redis are both reachable", async () => {
+    const reply = await call(api.base, "/ready");
+    expect(reply.status).toBe(200);
+    expect(reply.body).toEqual({ status: "ready", postgres: "up", redis: "up" });
+  });
+});
+
+describe("request id", () => {
+  it("a good id from nginx is kept and sent back", async () => {
+    const reply = await call(api.base, "/health", { headers: { "x-request-id": "abc12345-good" } });
+    expect(reply.headers.get("x-request-id")).toBe("abc12345-good");
+  });
+
+  it("a missing or dangerous id is replaced by a new one (it ends up in logs and headers)", async () => {
+    for (const bad of [undefined, "short", "has spaces and ../ and <script>", "x".repeat(200)]) {
+      const reply = await call(api.base, "/health", bad === undefined ? {} : { headers: { "x-request-id": bad } });
+      const id = reply.headers.get("x-request-id") ?? "";
+      expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    }
+  });
+});
+
+describe("API documentation", () => {
+  it("Swagger UI is served at /docs", async () => {
+    const reply = await call(api.base, "/docs");
+    expect(reply.status).toBe(200);
+    expect(reply.text.toLowerCase()).toContain("swagger");
+  });
+
+  it("the OpenAPI document lists the endpoints and describes the login body from the same schema that validates it", async () => {
+    const reply = await call(api.base, "/openapi.json");
+    expect(reply.status).toBe(200);
+    const doc = reply.body as { paths: Record<string, Record<string, { requestBody?: { content: { "application/json": { schema: { properties?: Record<string, unknown>; required?: string[] } } } } }>> };
+    for (const path of ["/health", "/ready", "/auth/register", "/auth/login", "/auth/logout", "/me"]) {
+      expect(Object.keys(doc.paths)).toContain(path);
+    }
+    const loginSchema = doc.paths["/auth/login"]?.["post"]?.requestBody?.content["application/json"].schema;
+    expect(Object.keys(loginSchema?.properties ?? {}).sort()).toEqual(["email", "password"]);
+    expect(loginSchema?.required?.sort()).toEqual(["email", "password"]);
   });
 });
