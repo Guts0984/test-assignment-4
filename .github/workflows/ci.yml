@@ -4,9 +4,10 @@ on:
   push:
   pull_request:
 
+# Every commit gets a complete run that stays in the history: a newer commit never cancels an older run.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   # Style rules, type checks and the tests that need no running stack.
