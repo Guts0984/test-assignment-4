@@ -2,6 +2,13 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-  test: { include: ["test/**/*.test.ts"] },
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // "server-only" makes the build fail when a browser file imports server code; in tests there is no such rule.
+      "server-only": fileURLToPath(new URL("./test/stubs/server-only.ts", import.meta.url)),
+    },
+  },
+  test: { include: ["test/**/*.test.{ts,tsx}"] },
+  esbuild: { jsx: "automatic" },
 });

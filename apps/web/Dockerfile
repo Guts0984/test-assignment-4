@@ -21,7 +21,7 @@ RUN pnpm --filter @app/web build
 # ---------- STAGE 2: the plate ----------
 FROM node:22-alpine
 
-ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1 SHUTDOWN_TIMEOUT_MS=10000
 WORKDIR /app
 
 # The self-contained server, its static files, and the small wrapper that stops it politely.

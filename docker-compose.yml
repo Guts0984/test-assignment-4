@@ -51,7 +51,13 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment:
+      API_PORT: 4000
       LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
+      # "true" when the site is served over https: the session cookie then gets the Secure flag.
+      COOKIE_SECURE: ${COOKIE_SECURE}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -81,6 +87,10 @@ services:
       dockerfile: apps/worker/Dockerfile
     environment:
       LOG_LEVEL: ${LOG_LEVEL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
+      WEB_URL: http://web:3000
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -103,6 +113,9 @@ services:
       dockerfile: apps/web/Dockerfile
     environment:
       LOG_LEVEL: ${LOG_LEVEL}
+      # Where the api listens inside the Docker network (never sent to the browser).
+      API_URL: http://api:4000
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
     depends_on:
       api1:
         condition: service_healthy

@@ -9,7 +9,8 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "eslint .",
     "test": "pnpm -r --reporter=append-only --if-present test",
-    "e2e": "pnpm --filter @app/e2e e2e"
+    "e2e": "pnpm --filter @app/e2e e2e",
+    "loadtest": "pnpm --filter @app/loadtest loadtest"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

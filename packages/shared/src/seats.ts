@@ -20,6 +20,8 @@ export type SeatCell = z.infer<typeof seatCellSchema>;
 export const seatMapSchema = z.object({
   eventId: z.number().int(),
   rows: z.array(z.object({ label: z.string(), seats: z.array(seatCellSchema) })),
+  /** The caller's own active holds on this event (so they can go back to paying). Always empty for an anonymous visitor. */
+  myHoldIds: z.array(z.uuid()),
 });
 export type SeatMap = z.infer<typeof seatMapSchema>;
 

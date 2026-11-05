@@ -54,6 +54,18 @@ describe("register", () => {
     expect(await api.infra.db.user.count({ where: { email: "race@example.com" } })).toBe(1);
   });
 
+  it("one address can only create so many accounts per hour (429), configurable", async () => {
+    const strict = await startApp({ env: { REGISTER_MAX_PER_HOUR: "3" }, databaseUrl: api.databaseUrl, flush: false });
+    try {
+      const visitor = asVisitor("203.0.113.99");
+      const statuses: number[] = [];
+      for (let i = 0; i < 5; i++) statuses.push((await call(strict.base, "/auth/register", { body: { email: `cap${i}-${Date.now()}@example.com`, password: "a good password" }, headers: visitor })).status);
+      expect(statuses).toEqual([201, 201, 201, 429, 429]);
+    } finally {
+      await strict.close();
+    }
+  });
+
   it("refuses weak or silly passwords and emails with 400", async () => {
     for (const body of [
       { email: "a@example.com", password: "short" },
@@ -224,26 +236,57 @@ describe("guessing protection that cannot lock the owner out (acceptance check 1
     expect((await login(api.base, "bob@example.com", passwords.user, asVisitor("198.51.100.9"))).reply.status).toBe(200);
   });
 
-  it("guesses at 40 different accounts from one address count together", async () => {
-    const attacker = asVisitor("203.0.113.70");
-    const results: number[] = [];
-    for (let i = 0; i < api.env.LOGIN_FAILURES_MAX + 3; i++) {
-      results.push((await call(api.base, "/auth/login", { body: { email: `victim${i}@example.com`, password: "guess guess 1" }, headers: attacker })).status);
+  it("a scan over MANY accounts from one address is stopped by the (higher) per-address limit", async () => {
+    const scanner = await startApp({ env: { LOGIN_FAILURES_PER_IP_MAX: "12" }, flush: false });
+    try {
+      const attacker = asVisitor("203.0.113.70");
+      const results: number[] = [];
+      for (let i = 0; i < 15; i++) {
+        results.push((await call(scanner.base, "/auth/login", { body: { email: `victim${i}@example.com`, password: "guess guess 1" }, headers: attacker })).status);
+      }
+      expect(results.slice(0, 12)).toEqual(Array(12).fill(401));
+      expect(results.slice(-3)).toEqual([429, 429, 429]);
+    } finally {
+      await scanner.close();
     }
-    expect(results.slice(-3)).toEqual([429, 429, 429]);
   });
 
-  it("successful logins do not count and do not wash the count away", async () => {
-    const attacker = asVisitor("203.0.113.80");
-    for (let i = 0; i < 6; i++) await call(api.base, "/auth/login", { body: { email: ALICE, password: `bad ${i}` }, headers: attacker });
-    // the attacker logs into an account of their own between guesses: this must not reset the counter
-    for (let i = 0; i < 6; i++) {
-      await login(api.base, "bob@example.com", passwords.user, attacker);
-      await call(api.base, "/auth/login", { body: { email: ALICE, password: `bad again ${i}` }, headers: attacker });
+  it("logging into your OWN account between guesses at someone else's does not wash the count away", async () => {
+    const slow = await startApp({ env: { LOGIN_BURST_MAX: "1000" }, databaseUrl: api.databaseUrl, flush: false });
+    try {
+      await washTest(slow);
+    } finally {
+      await slow.close();
     }
-    const failures = await redis.get("rl:login-failures:203.0.113.80");
-    expect(Number(failures)).toBe(12);
   });
+
+  async function washTest(api: TestApp) {
+    const attacker = asVisitor("203.0.113.80");
+    const limit = api.env.LOGIN_FAILURES_MAX;
+    for (let i = 0; i < limit; i++) {
+      await login(api.base, "bob@example.com", passwords.user, attacker); // the attacker's own account, correct password
+      expect((await call(api.base, "/auth/login", { body: { email: ALICE, password: `bad ${i}` }, headers: attacker })).status).toBe(401);
+    }
+    expect((await call(api.base, "/auth/login", { body: { email: ALICE, password: "one more" }, headers: attacker })).status).toBe(429);
+  }
+
+  it("a correct login clears the count for that address and account, so the owner starts fresh", async () => {
+    const slow = await startApp({ env: { LOGIN_BURST_MAX: "1000" }, databaseUrl: api.databaseUrl, flush: false });
+    try {
+      await clearTest(slow);
+    } finally {
+      await slow.close();
+    }
+  });
+
+  async function clearTest(api: TestApp) {
+    const owner = asVisitor("203.0.113.85");
+    const limit = api.env.LOGIN_FAILURES_MAX;
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < limit - 1; i++) expect((await call(api.base, "/auth/login", { body: { email: ALICE, password: `typo ${round}-${i}` }, headers: owner })).status).toBe(401);
+      expect((await login(api.base, ALICE, passwords.user, owner)).reply.status).toBe(200); // many typos, then the right one: fine
+    }
+  }
 
   it("30 parallel guesses cannot all slip through before the counter notices", async () => {
     const attacker = asVisitor("203.0.113.90");

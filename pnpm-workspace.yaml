@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - e2e
+  - loadtest
 
 # pnpm 12 blocks dependency install scripts unless allowed here.
 allowBuilds:
@@ -19,3 +20,5 @@ allowBuilds:
   ssh2: false
   # Only prints a donation message (swagger-ui).
   "@scarf/scarf": false
+  # In a Docker image the database package is bundled into the api and the worker, so its client-generating step is not needed there.
+  "@app/db": false

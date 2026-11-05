@@ -94,6 +94,12 @@ describe("the seat map", () => {
     expect(find(asBob)).toMatchObject({ status: "held", mine: false });
     expect(find(seatMapSchema.parse(asNobody.body))).toMatchObject({ status: "held", mine: false });
     expect(asNobody.text).not.toContain((alice as Person).id);
+    // her own hold id is given to her - and to nobody else
+    const holdId = (await sql.query<{ hold_id: string }>(`SELECT hold_id FROM event_seats WHERE event_id = $1 AND seat_id = $2`, [eventId, seatId])).rows[0]?.hold_id as string;
+    expect(asAlice.myHoldIds).toEqual([holdId]);
+    expect(asBob.myHoldIds).toEqual([]);
+    expect(seatMapSchema.parse(asNobody.body).myHoldIds).toEqual([]);
+    expect(asNobody.text).not.toContain(holdId);
   });
 
   it("is never stale: a change is in the very next read, on the other instance too", async () => {

@@ -30,7 +30,7 @@ const nextRules = nextVitals.map((config) =>
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/.next/**", "**/node_modules/**", "**/coverage/**", "**/next-env.d.ts", "packages/db/src/generated/**"],
+    ignores: ["**/dist/**", "**/.next/**", "**/node_modules/**", "**/coverage/**", "**/next-env.d.ts", "packages/db/src/generated/**", "**/test-results/**", "**/playwright-report/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -50,6 +50,11 @@ export default tseslint.config(
       ],
       ...restrictImports(),
     },
+  },
+  {
+    // The load-test script is plain Node.js (no TypeScript): tell the linter which globals Node provides.
+    files: ["loadtest/**/*.mjs"],
+    languageOptions: { globals: { process: "readonly", console: "readonly", fetch: "readonly", setTimeout: "readonly" } },
   },
   {
     // Functional style: plain functions and data, no classes.

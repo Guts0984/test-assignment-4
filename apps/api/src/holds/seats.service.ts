@@ -17,7 +17,7 @@ import { Realtime } from "../realtime/realtime";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type SeatRow = { seat_id: number; row: string; number: number; status: "FREE" | "HELD" | "SOLD"; user_id: string | null; held: boolean };
+type SeatRow = { seat_id: number; row: string; number: number; status: "FREE" | "HELD" | "SOLD"; user_id: string | null; hold_id: string | null; held: boolean };
 type SeatRefRow = { id: number; row: string; number: number };
 type HoldRow = { id: string; user_id: string; event_id: number; status: "ACTIVE" | "PAID" | "CANCELLED" | "EXPIRED"; expires_at: Date };
 
@@ -47,7 +47,7 @@ export class SeatsService {
     let read = this.mapReads.get(eventId);
     if (!read) {
       read = this.infra.db.$queryRaw<SeatRow[]>`
-        SELECT s.id AS seat_id, s."row" AS row, s.number, es.status::text AS status, es.user_id,
+        SELECT s.id AS seat_id, s."row" AS row, s.number, es.status::text AS status, es.user_id, es.hold_id,
                (es.status = 'HELD' AND es.held_until > now()) AS held
         FROM event_seats es JOIN seats s ON s.id = es.seat_id
         WHERE es.event_id = ${eventId}
@@ -56,13 +56,16 @@ export class SeatsService {
     }
     const rows = await read;
     const grouped = new Map<string, SeatMap["rows"][number]["seats"]>();
+    const myHoldIds = new Set<string>();
     for (const seat of rows) {
       const status = seat.status === "SOLD" ? "sold" : seat.status === "HELD" && seat.held ? "held" : "free";
       const cells = grouped.get(seat.row) ?? [];
-      cells.push({ id: seat.seat_id, number: seat.number, status, mine: userId !== undefined && status !== "free" && seat.user_id === userId });
+      const mine = userId !== undefined && status !== "free" && seat.user_id === userId;
+      if (mine && status === "held" && seat.hold_id) myHoldIds.add(seat.hold_id);
+      cells.push({ id: seat.seat_id, number: seat.number, status, mine });
       grouped.set(seat.row, cells);
     }
-    return { eventId, rows: [...grouped].map(([label, seats]) => ({ label, seats })) };
+    return { eventId, rows: [...grouped].map(([label, seats]) => ({ label, seats })), myHoldIds: [...myHoldIds] };
   }
 
   // ---------------------------------------------------------------- holding

@@ -1,7 +1,7 @@
 import { hashPassword, Prisma, verifyPassword, type Role } from "@app/db";
 import { ErrorCode, type LoginBody, type PublicUser, type RegisterBody, type UserRole } from "@app/shared";
 import { Inject, Injectable } from "@nestjs/common";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { AppError } from "../http/errors";
 import { RateLimiter, tooMany } from "../http/rate-limiter";
 import { Infra } from "../infra/infra";
@@ -24,7 +24,7 @@ export class AuthService {
   ) {}
 
   async register(body: RegisterBody, ip: string): Promise<{ user: PublicUser; sessionId: string }> {
-    await this.limiter.limit("register", ip, 30, 3600);
+    await this.limiter.limit("register", ip, this.infra.env.REGISTER_MAX_PER_HOUR, 3600);
     const passwordHash = await hashPassword(body.password);
     try {
       const created = await this.infra.db.user.create({ data: { email: body.email, passwordHash } });
@@ -40,24 +40,31 @@ export class AuthService {
 
   /**
    * Protection against guessing passwords that cannot be used to lock someone else out:
-   * - nothing is ever blocked per ACCOUNT. A stranger who types wrong passwords for your email changes nothing for you.
-   * - what is limited is the guessing ADDRESS: after too many wrong passwords from one address, that address waits
-   *   (a short burst limit protects against parallel guessing too). Correct logins from other addresses are untouched.
-   * - successes are not counted and do not reset the counter, so logging in to your own account cannot "wash" the count.
+   * - nothing is ever blocked per ACCOUNT alone. Wrong passwords are counted per visitor ADDRESS and account together:
+   *   a stranger typing wrong passwords for your email from his address changes nothing for you at your address.
+   * - a second, much higher counter per address stops a scan over many accounts.
+   * - a correct login clears the count for THAT address and account (knowing the password proves ownership). It never clears
+   *   the count of another account, so logging into your own account cannot wash away guesses made at someone else's.
+   * - a short burst limit stops parallel guessing before the counters notice.
+   * (Someone behind the very same network address as the owner shares that address's count; the block ends by itself.)
    */
   async login(body: LoginBody, ip: string): Promise<{ user: PublicUser; sessionId: string }> {
     const { env } = this.infra;
-    await this.limiter.limit("login-burst", ip, 30, 10);
-    const failuresKey = `rl:login-failures:${ip}`;
-    const failures = await this.limiter.peek(failuresKey);
-    if (failures && failures.count >= env.LOGIN_FAILURES_MAX) throw tooMany(failures.retryAfterSeconds);
+    await this.limiter.limit("login-burst", ip, env.LOGIN_BURST_MAX, 10);
+    const account = createHash("sha256").update(body.email).digest("hex").slice(0, 32);
+    const perAddress = `rl:login-failures:ip:${ip}`;
+    const perAccount = `rl:login-failures:acct:${ip}:${account}`;
+    const [addressCount, accountCount] = await Promise.all([this.limiter.peek(perAddress), this.limiter.peek(perAccount)]);
+    if (addressCount && addressCount.count >= env.LOGIN_FAILURES_PER_IP_MAX) throw tooMany(addressCount.retryAfterSeconds);
+    if (accountCount && accountCount.count >= env.LOGIN_FAILURES_MAX) throw tooMany(accountCount.retryAfterSeconds);
 
     const user = await this.infra.db.user.findUnique({ where: { email: body.email } });
     const matches = await verifyPassword(body.password, user?.passwordHash ?? (await this.decoyHash));
     if (!user || !matches) {
-      await this.limiter.hit(failuresKey, env.LOGIN_FAILURES_WINDOW_SECONDS);
+      await Promise.all([this.limiter.hit(perAddress, env.LOGIN_FAILURES_WINDOW_SECONDS), this.limiter.hit(perAccount, env.LOGIN_FAILURES_WINDOW_SECONDS)]);
       throw new AppError(401, ErrorCode.INVALID_CREDENTIALS, "Wrong email or password.");
     }
+    await this.infra.redis.del(perAccount).catch(() => undefined);
     return { user: this.publicUser(user), sessionId: await this.openSession(user) };
   }
 

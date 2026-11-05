@@ -10,10 +10,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Style rules, type checks and the tests that need no running stack.
+  # Style rules, type checks, and the tests. The api, worker and database tests start a real PostgreSQL and a real
+  # Redis themselves (Testcontainers, Docker is available on the runner).
   checks:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -22,14 +23,15 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
+      # Typecheck works straight after the install: nothing has to be built first.
       - run: pnpm typecheck
+      - run: pnpm lint
       - run: pnpm test
 
-  # Do all images build, does the whole stack start, and does it behave in a real browser?
+  # Do all images build, does the whole stack start, and does it behave in real browsers?
   stack:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: checks
     steps:
       - uses: actions/checkout@v4
@@ -43,14 +45,25 @@ jobs:
       # The one manual step from the README, done here too.
       - run: cp .env.example .env
 
-      - name: Start the stack
-        run: docker compose up --build --wait --wait-timeout 300
+      - name: Build the images
+        run: docker compose build
 
-      - name: Install the browser for the tests
-        run: pnpm --filter @app/e2e exec playwright install --with-deps chromium
+      - name: Start the stack (migrations and seed run once, by themselves)
+        run: docker compose up --wait --wait-timeout 300 -d
 
-      - name: Browser tests
+      - name: Install the browsers for the tests
+        run: pnpm --filter @app/e2e exec playwright install --with-deps chromium firefox webkit
+
+      # Three times in a row on the same stack, without restarting anything in between.
+      - name: Browser tests, run 1 of 3
         run: pnpm e2e
+      - name: Browser tests, run 2 of 3
+        run: pnpm e2e
+      - name: Browser tests, run 3 of 3
+        run: pnpm e2e
+
+      - name: Load test (200 buyers, 10 seats)
+        run: pnpm --filter @app/loadtest loadtest
 
       - name: Logs of the stack (on failure)
         if: failure()

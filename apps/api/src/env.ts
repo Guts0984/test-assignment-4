@@ -35,8 +35,14 @@ const envSchema = z.object({
   /** Requests per visitor address and window, shared by all api instances. */
   RATE_LIMIT_MAX: positiveInt(300),
   RATE_LIMIT_WINDOW_SECONDS: positiveInt(10),
-  /** Wrong passwords per visitor address and window before that address is slowed down. */
+  /** Wrong passwords for ONE account from ONE visitor address, per window, before that address is stopped for that account. */
   LOGIN_FAILURES_MAX: positiveInt(20),
+  /** Wrong passwords from one visitor address in total (any accounts), per window. Much higher: it only stops a scan over many accounts. */
+  LOGIN_FAILURES_PER_IP_MAX: positiveInt(200),
+  /** Login attempts (right or wrong) from one address in 10 seconds: stops guessing in parallel before the counters above notice. */
+  LOGIN_BURST_MAX: positiveInt(30),
+  /** New accounts from one visitor address per hour. */
+  REGISTER_MAX_PER_HOUR: positiveInt(300),
   LOGIN_FAILURES_WINDOW_SECONDS: positiveInt(900),
 
   /** How long a hold keeps its seats. */

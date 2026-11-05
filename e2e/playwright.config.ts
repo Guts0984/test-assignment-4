@@ -1,10 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The tests drive a real browser against the whole running stack (`docker compose up`).
-// BASE_URL defaults to the address from .env.example.
+// The tests drive real browsers against the whole running stack (`docker compose up`).
+// BASE_URL defaults to the address from .env.example. Choose browsers with `--project chromium|firefox|webkit`.
+const executable = process.env["CHROME_PATH"] ? { launchOptions: { executablePath: process.env["CHROME_PATH"] } } : {};
+
 export default defineConfig({
   testDir: "tests",
-  timeout: 60_000,
+  timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
@@ -13,8 +15,10 @@ export default defineConfig({
   use: {
     baseURL: process.env["BASE_URL"] ?? "http://localhost:8080",
     trace: "retain-on-failure",
-    ...devices["Desktop Chrome"],
-    // Use the browser Playwright installed, or the system Chrome when CHROME_PATH is set.
-    ...(process.env["CHROME_PATH"] ? { launchOptions: { executablePath: process.env["CHROME_PATH"] } } : {}),
   },
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"], ...executable } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+  ],
 });

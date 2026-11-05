@@ -17,7 +17,9 @@ export function requestContext(logger: Logger, internalSecret: string) {
     res.setHeader("X-Request-Id", req.requestId);
     const started = process.hrtime.bigint();
     res.on("finish", () => {
-      logger.info(
+      // Docker asks /health every few seconds: that is noise at the normal level.
+      const log = req.path === "/health" || req.path === "/ready" ? logger.debug.bind(logger) : logger.info.bind(logger);
+      log(
         {
           requestId: req.requestId,
           method: req.method,
