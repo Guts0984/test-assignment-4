@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+  - e2e
+
+# pnpm 12 blocks dependency install scripts unless allowed here.
+allowBuilds:
+  esbuild: true
+  # Optional native speed-up used by bullmq; it works without it.
+  msgpackr-extract: false
+  # Only prints a donation message.
+  "@nestjs/core": false

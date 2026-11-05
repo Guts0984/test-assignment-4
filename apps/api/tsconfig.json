@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // NestJS is built on decorators. Every injected class is named with @Inject(...) (no emitted type metadata),
+    // so the build tool (esbuild) needs no plugin for it.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false
+  },
+  "include": ["src", "test", "tsup.config.ts", "vitest.config.ts"]
+}
