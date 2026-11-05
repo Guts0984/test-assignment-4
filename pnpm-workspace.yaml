@@ -10,3 +10,10 @@ allowBuilds:
   msgpackr-extract: false
   # Only prints a donation message.
   "@nestjs/core": false
+  # Prisma downloads its migration engine in these install scripts.
+  prisma: true
+  "@prisma/engines": true
+  # Testcontainers dependencies: optional native speed-ups and a version check, not needed.
+  cpu-features: false
+  protobufjs: false
+  ssh2: false

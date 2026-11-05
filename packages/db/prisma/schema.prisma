@@ -1,0 +1,208 @@
+// Database schema. Rules that Prisma cannot express (CHECK constraints, the 6-seat trigger,
+// the outbox trigger) are added by hand in a custom SQL migration.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+
+  @@map("role")
+}
+
+enum SeatStatus {
+  FREE
+  HELD
+  SOLD
+
+  @@map("seat_status")
+}
+
+enum HoldStatus {
+  ACTIVE
+  PAID
+  CANCELLED
+  EXPIRED
+
+  @@map("hold_status")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  holds           Hold[]
+  orders          Order[]
+  eventSeats      EventSeat[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@map("users")
+}
+
+// A physical hall. Its seats never change.
+model Hall {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  seats  Seat[]
+  events Event[]
+
+  @@map("halls")
+}
+
+// One physical place in a hall: row label and number in the row.
+model Seat {
+  id     Int    @id @default(autoincrement())
+  hallId Int    @map("hall_id")
+  row    String
+  number Int
+
+  hall       Hall        @relation(fields: [hallId], references: [id])
+  eventSeats EventSeat[]
+
+  @@unique([hallId, row, number])
+  @@map("seats")
+}
+
+model Event {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  city        String
+  startsAt    DateTime @map("starts_at") @db.Timestamptz(3)
+  hallId      Int      @map("hall_id")
+  // Optimistic locking for PATCH /events/:id (409 on a stale version). Bumped by a trigger.
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  hall       Hall        @relation(fields: [hallId], references: [id])
+  eventSeats EventSeat[]
+  holds      Hold[]
+  orders     Order[]
+
+  @@index([startsAt])
+  @@index([city, startsAt])
+  @@map("events")
+}
+
+// The state of one seat at one event. This table is where double selling is prevented:
+// taking a seat is a single UPDATE ... WHERE status = 'FREE' (or an expired hold), so the row lock
+// lets only one buyer win.
+model EventSeat {
+  id        Int        @id @default(autoincrement())
+  eventId   Int        @map("event_id")
+  seatId    Int        @map("seat_id")
+  status    SeatStatus @default(FREE)
+  // Who holds or bought the seat. Set when HELD or SOLD, empty when FREE.
+  userId    String?    @map("user_id") @db.Uuid
+  holdId    String?    @map("hold_id") @db.Uuid
+  heldUntil DateTime?  @map("held_until") @db.Timestamptz(3)
+
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  seat       Seat       @relation(fields: [seatId], references: [id])
+  user       User?      @relation(fields: [userId], references: [id])
+  hold       Hold?      @relation(fields: [holdId], references: [id])
+  orderItem  OrderItem?
+
+  @@unique([eventId, seatId])
+  @@index([eventId, status])
+  @@index([holdId])
+  @@index([userId, eventId])
+  @@index([heldUntil])
+  @@map("event_seats")
+}
+
+// One request to hold 1..6 seats of one event for 10 minutes.
+model Hold {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  eventId   Int        @map("event_id")
+  status    HoldStatus @default(ACTIVE)
+  expiresAt DateTime   @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user       User        @relation(fields: [userId], references: [id])
+  event      Event       @relation(fields: [eventId], references: [id])
+  eventSeats EventSeat[]
+  order      Order?
+
+  @@index([userId, eventId])
+  @@index([status, expiresAt])
+  @@map("holds")
+}
+
+model Order {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  eventId   Int      @map("event_id")
+  // One hold becomes at most one order, so paying twice cannot create two orders.
+  holdId    String   @unique @map("hold_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user  User        @relation(fields: [userId], references: [id])
+  event Event       @relation(fields: [eventId], references: [id])
+  hold  Hold        @relation(fields: [holdId], references: [id])
+  items OrderItem[]
+
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+// A sold seat. The unique (event, seat) pair is a second, independent guard against selling twice.
+model OrderItem {
+  id      Int    @id @default(autoincrement())
+  orderId String @map("order_id") @db.Uuid
+  eventId Int    @map("event_id")
+  seatId  Int    @map("seat_id")
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  eventSeat EventSeat @relation(fields: [eventId, seatId], references: [eventId, seatId])
+
+  @@unique([eventId, seatId])
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// Saved answers for the Idempotency-Key header, so a repeated request returns the same answer.
+model IdempotencyKey {
+  id             Int      @id @default(autoincrement())
+  userId         String   @map("user_id") @db.Uuid
+  key            String
+  // Hash of the request body: the same key with a different body is an error (422).
+  requestHash    String   @map("request_hash")
+  // Empty while the first request is still running.
+  responseStatus Int?     @map("response_status")
+  responseBody   Json?    @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, key])
+  @@index([createdAt])
+  @@map("idempotency_keys")
+}
+
+// Notes about changes that other processes must react to (for example "event 5 changed" so the
+// worker asks web to drop its cache). A database trigger writes them, so even a change made by hand
+// in SQL leaves a note.
+model Outbox {
+  id          BigInt    @id @default(autoincrement())
+  type        String
+  payload     Json
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(3)
+
+  @@index([processedAt, id])
+  @@map("outbox")
+}

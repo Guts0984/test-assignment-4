@@ -1,4 +1,6 @@
 node_modules/
+# Created by `prisma generate` (runs on pnpm install), never committed.
+packages/db/src/generated/
 dist/
 .next/
 coverage/
