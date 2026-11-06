@@ -13,13 +13,20 @@ async function waitUntilCalm(request: import("@playwright/test").APIRequestConte
 
 test("a made-up X-Forwarded-For does not get around the limit (acceptance check 12)", async ({ request }) => {
   const statuses: number[] = [];
-  for (let batch = 0; batch < 8; batch++) {
-    const replies = await Promise.all(Array.from({ length: 60 }, (_, i) => request.get("/api/events/1", { headers: { "x-forwarded-for": `203.0.${batch}.${i + 1}`, "x-real-ip": `198.51.${batch}.${i + 1}`, "x-end-user-ip": `192.0.2.${i + 1}` } })));
-    statuses.push(...replies.map((r) => r.status()));
+  try {
+    // The limit counts in fixed windows, and the window may end in the middle of our burst (on a slow machine it often does).
+    // So do not send "a fixed number of requests and hope they fit in one window": keep sending until the limit has clearly
+    // happened (or we have sent far more than any single address could be allowed in a window).
+    for (let batch = 0; batch < 60 && statuses.filter((s) => s === 429).length < 160; batch++) {
+      const replies = await Promise.all(Array.from({ length: 60 }, (_, i) => request.get("/api/events/1", { headers: { "x-forwarded-for": `203.0.${batch}.${i + 1}`, "x-real-ip": `198.51.${batch}.${i + 1}`, "x-end-user-ip": `192.0.2.${i + 1}` } })));
+      statuses.push(...replies.map((r) => r.status()));
+    }
+    expect(statuses.filter((s) => s === 429).length, "requests that claimed other addresses are still limited").toBeGreaterThan(100);
+    expect(statuses.every((s) => s === 200 || s === 429)).toBe(true);
+  } finally {
+    // Always let the limits recover, even when an assertion above fails: the next tests (and the next browser) share this address.
+    await waitUntilCalm(request);
   }
-  expect(statuses.filter((s) => s === 429).length, "requests that claimed other addresses are still limited").toBeGreaterThan(100);
-  expect(statuses.every((s) => s === 200 || s === 429)).toBe(true);
-  await waitUntilCalm(request);
 });
 
 test("a NUL byte is a clean 4xx, never a 5xx, wherever it is put", async ({ request }) => {
