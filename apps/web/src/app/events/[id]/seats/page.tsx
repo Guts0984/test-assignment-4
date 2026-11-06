@@ -1,6 +1,7 @@
 import { parseEventId } from "@app/shared";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { AdminEditLink } from "@/features/admin";
 import { EventFacts } from "@/features/events";
 import { getEvent } from "@/features/events/server";
 import { SeatPicker } from "@/features/seats";
@@ -24,6 +25,7 @@ export default async function SeatsPage({ params }: { params: Promise<{ id: stri
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">{loaded.kind === "ok" ? loaded.data.title : "Choose seats"}</h1>
         {loaded.kind === "ok" && <EventFacts event={loaded.data} />}
+        <AdminEditLink eventId={id} />
       </div>
       <SeatPicker eventId={id} />
     </div>

@@ -365,6 +365,7 @@ describe("Idempotency-Key (acceptance check 8)", () => {
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
     expect(second.body).toEqual(first.body);
+    expect(second.text, "the replay is the same answer byte for byte, not just the same data").toBe(first.text);
     expect(second.headers.get("idempotent-replayed")).toBe("true");
     expect(first.headers.get("idempotent-replayed")).toBeNull();
     expect((await sql.query(`SELECT 1 FROM holds WHERE user_id = $1`, [(alice as Person).id])).rowCount).toBe(1);

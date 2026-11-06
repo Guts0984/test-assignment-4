@@ -104,3 +104,38 @@ test("access rules: anonymous -> 307 to the login page, an ordinary user -> 403,
   expect((await stranger.request.patch(`/api/events/${EVENT_ID}`, { data: { title: "x", version: 1 } })).status()).toBe(403);
   await stranger.close();
 });
+
+test("the administrator finds the edit form from the event pages; nobody else sees the button, and it is never in the shared page cache", async ({ browser, request }) => {
+  const EVENT = 3;
+  // the pages everybody shares must not contain it (they come from a cache; whoever asks first would decide for everyone)
+  for (const path of [`/events/${EVENT}`, `/events/${EVENT}/seats`]) {
+    expect(await (await request.get(path)).text(), `${path} as served to anybody`).not.toContain("Edit event");
+  }
+
+  const adminContext = await browser.newContext();
+  await loginInContext(adminContext, ADMIN);
+  const adminPage = await adminContext.newPage();
+  for (const path of [`/events/${EVENT}`, `/events/${EVENT}/seats`]) {
+    await adminPage.goto(path);
+    await expect(adminPage.getByTestId("edit-event"), path).toBeVisible();
+  }
+  await adminPage.getByTestId("edit-event").click();
+  await expect(adminPage).toHaveURL(new RegExp(`/admin/events/${EVENT}$`));
+  await expect(adminPage.getByLabel("Title")).toBeVisible();
+  await adminContext.close();
+
+  const userContext = await browser.newContext();
+  await registerInContext(userContext, newPerson("not-admin"));
+  const visitorContext = await browser.newContext();
+  for (const [who, context] of [["an ordinary user", userContext], ["a visitor", visitorContext]] as const) {
+    const page = await context.newPage();
+    for (const path of [`/events/${EVENT}`, `/events/${EVENT}/seats`]) {
+      await page.goto(path);
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("link", { name: "Choose seats" }).or(page.getByTestId("selection-summary")), `${who} on ${path}`).toBeVisible();
+      await expect(page.getByTestId("edit-event"), `${who} on ${path}`).toHaveCount(0);
+    }
+  }
+  await userContext.close();
+  await visitorContext.close();
+});

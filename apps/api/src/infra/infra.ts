@@ -35,11 +35,14 @@ export function createInfra(env: Env, logger: Logger = createLogger(env.LOG_LEVE
     retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
     reconnectOnError: () => true,
   });
+  failFastWhileRedisIsFrozen(redis);
   redis.on("error", (error) => logger.warn({ err: error.message }, "redis error"));
   redis.on("reconnecting", () => logger.warn("redis reconnecting"));
   redis.on("ready", () => logger.info("redis ready"));
 
   const db = createDb(env.DATABASE_URL, {
+    // No single query waits longer than 2.5 s (3.5 s on the client side, for a database that has frozen and never answers).
+    statementTimeoutMs: 2500,
     onError: (error) => logger.warn({ err: error.message }, "postgres connection error"),
     ...(hooks.onQuery ? { onQuery: hooks.onQuery } : {}),
   });
@@ -73,4 +76,25 @@ export async function withTimeout<T>(work: Promise<T>, ms: number, what: string)
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * A frozen Redis (it accepts the connection but never answers) makes EVERY command wait for its own timeout. One request makes
+ * several Redis calls one after another (limits, failure counters, the session ...), so it would hang for 4 x 2 s or more.
+ * So: once one command has timed out, the commands that follow fail at once for a short moment, and then one of them tries again.
+ * A request then waits for one timeout, not for a chain of them. (A refused or closed connection is not affected: it already fails fast.)
+ */
+export function failFastWhileRedisIsFrozen(redis: Redis, openForMs = 1500): void {
+  let openUntil = 0;
+  const send = redis.sendCommand.bind(redis) as (command: unknown, stream?: unknown) => unknown;
+  (redis as unknown as { sendCommand: typeof send }).sendCommand = (command, stream) => {
+    if (Date.now() < openUntil) return Promise.reject(new Error("Command timed out: redis is not answering (failing fast)"));
+    const result = send(command, stream);
+    if (result instanceof Promise) {
+      result.catch((error: unknown) => {
+        if (error instanceof Error && /timed out/i.test(error.message)) openUntil = Date.now() + openForMs;
+      });
+    }
+    return result;
+  };
 }

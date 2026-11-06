@@ -12,6 +12,17 @@ export function requestHash(parts: unknown): string {
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 }
 
+/**
+ * The answer is stored as the TEXT that was sent, not as a JSON value: PostgreSQL's JSON column may reorder the keys, and a repeat
+ * must be the very same answer, byte for byte. (A note written before this change holds an ordinary JSON value; `restore` accepts both.)
+ */
+function keep(body: unknown): Prisma.InputJsonValue {
+  return JSON.stringify(body ?? null);
+}
+function restore(stored: unknown): unknown {
+  return typeof stored === "string" ? (JSON.parse(stored) as unknown) : stored;
+}
+
 const WAIT_FOR_FIRST_REQUEST_MS = 4000;
 /** A "running" note older than this belongs to a request that died half way (its transaction was rolled back). */
 const ABANDONED_AFTER_MS = 30_000;
@@ -45,7 +56,7 @@ export async function runOnce(
       if (note.requestHash !== hash) {
         throw new AppError(422, ErrorCode.IDEMPOTENCY_KEY_REUSED, "This Idempotency-Key was already used for a different request.");
       }
-      if (note.responseStatus !== null) return { status: note.responseStatus, body: note.responseBody, replayed: true };
+      if (note.responseStatus !== null) return { status: note.responseStatus, body: restore(note.responseBody), replayed: true };
       if (Date.now() - note.createdAt.getTime() > ABANDONED_AFTER_MS) {
         await db.idempotencyKey.deleteMany({ where: { id: note.id, responseStatus: null } });
         break;
@@ -64,13 +75,13 @@ async function runFirst(infra: Infra, userId: string, key: string, work: () => P
   const where = { userId_key: { userId, key } };
   try {
     const result = await work();
-    await db.idempotencyKey.update({ where, data: { responseStatus: result.status, responseBody: result.body as Prisma.InputJsonValue } });
+    await db.idempotencyKey.update({ where, data: { responseStatus: result.status, responseBody: keep(result.body) } });
     return { ...result, replayed: false };
   } catch (error) {
     const rendered = renderError(error);
     if (rendered.status < 500 && rendered.status !== 429) {
       // A final refusal: remember it, so the same key always gets the same answer.
-      await db.idempotencyKey.update({ where, data: { responseStatus: rendered.status, responseBody: rendered.body as Prisma.InputJsonValue } }).catch(() => undefined);
+      await db.idempotencyKey.update({ where, data: { responseStatus: rendered.status, responseBody: keep(rendered.body) } }).catch(() => undefined);
     } else {
       // Our fault or a temporary problem: forget the key so that a retry can run for real.
       await db.idempotencyKey.deleteMany({ where: { userId, key, responseStatus: null } }).catch(() => undefined);

@@ -135,11 +135,16 @@ describe("PostgreSQL restarts (acceptance check 16)", () => {
   }, 120_000);
 
   it("a database that stops answering at all (frozen, not refusing) still gives an answer within a few seconds", async () => {
+    // Warm the pool first: a connection that is already open and then freezes waits for the query timeout, which is the slow case.
+    await Promise.all([call(base, "/events/4/seats"), call(base, "/events/5/seats"), call(base, "/events/6/seats")]);
     docker("pause", postgres.getId());
     try {
       const login503 = await timed("/auth/login", { body: { email: "alice@example.com", password: passwords.user }, headers: visitor() });
       expect([503]).toContain(login503.status);
-      expect(login503.ms).toBeLessThan(8000);
+      expect(login503.ms).toBeLessThan(4500);
+      const cold = await timed("/events/3/seats");
+      expect(cold.status).toBe(503);
+      expect(cold.ms, `the seat map took ${Math.round(cold.ms)} ms`).toBeLessThan(4500);
       const ready = await timed("/ready");
       expect(ready.status).toBe(503);
       expect(ready.ms).toBeLessThan(3500);
@@ -198,6 +203,31 @@ describe("Redis restarts (acceptance check 16)", () => {
     }
     await waitUntilReady(30);
     expect((await call(base, "/me", { cookie: session.cookie })).status).toBe(200);
+    expect(uncaught).toEqual([]);
+  }, 120_000);
+});
+
+describe("a frozen Redis, the slowest requests (acceptance: no request hangs for more than a few seconds)", () => {
+  it("login, registration and the seat map answer within about three seconds, not after a chain of timeouts", async () => {
+    docker("pause", redis.getId());
+    try {
+      const mail = `frozen-${Date.now().toString(36)}@test.local`;
+      const answers = await Promise.all([
+        timed("/auth/login", { body: { email: "alice@example.com", password: "wrong-password-1" } }),
+        timed("/auth/register", { body: { email: mail, password: "frozen-redis-password" } }),
+        timed("/events/1/seats"),
+        timed("/events/2"),
+      ]);
+      for (const [name, answer] of [["login", answers[0]], ["register", answers[1]], ["seat map", answers[2]], ["event", answers[3]]] as const) {
+        expect(answer.status, name).toBeLessThan(600);
+        expect(answer.ms, `${name} took ${Math.round(answer.ms)} ms`).toBeLessThan(3500);
+      }
+      // and every answer is a clean one: success, or a 4xx/503 in the common error shape - never an unexplained 500
+      for (const answer of answers) expect([200, 201, 401, 429, 503]).toContain(answer.status);
+    } finally {
+      docker("unpause", redis.getId());
+    }
+    await waitUntilReady(30);
     expect(uncaught).toEqual([]);
   }, 120_000);
 });
