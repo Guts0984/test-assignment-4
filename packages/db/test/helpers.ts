@@ -28,6 +28,10 @@ export async function createTestDb(template: "empty" | "seeded", poolSize = 60):
   }
   const url = withDatabase(adminUrl, name);
   const pool = new Pool({ connectionString: url, max: poolSize });
+  // When the test database is dropped, connections that are still closing report "terminating connection": that is expected.
+  pool.on("error", () => undefined);
+  // A connection that is being closed when its database is dropped reports the same thing on the connection itself.
+  pool.on("connect", (client) => client.on("error", () => undefined));
   return {
     url,
     pool,

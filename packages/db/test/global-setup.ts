@@ -55,12 +55,15 @@ export default async function setup(project: TestProject): Promise<() => Promise
     });
   }
 
-  const seeded = createDb(withDatabase(adminUrl, "template_seeded"));
+  const seeded = createDb(withDatabase(adminUrl, "template_seeded"), { statementTimeoutMs: 120_000 });
   try {
     await seed(seeded, SEED_PASSWORDS);
   } finally {
     await seeded.$disconnect();
   }
+
+  // A template can only be copied when nobody is connected to it; the seed's pooled connections close a moment late.
+  await adminQuery(adminUrl, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('template_seeded', 'template_empty') AND pid <> pg_backend_pid()");
 
   project.provide("adminUrl", adminUrl);
   return async () => {

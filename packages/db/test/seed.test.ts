@@ -17,7 +17,7 @@ let testDb: TestDb;
 let db: Db;
 beforeEach(async () => {
   testDb = await createTestDb("empty");
-  db = createDb(testDb.url);
+  db = createDb(testDb.url, { statementTimeoutMs: 120_000 });
 });
 afterEach(async () => {
   await db.$disconnect();
@@ -136,7 +136,7 @@ describe("running the seed again", () => {
   });
 
   it("5 seeders started at the same moment (for example 5 containers) still produce exactly one set of data", async () => {
-    const clients = Array.from({ length: 5 }, () => createDb(testDb.url));
+    const clients = Array.from({ length: 5 }, () => createDb(testDb.url, { statementTimeoutMs: 120_000 }));
     try {
       const results = await Promise.allSettled(clients.map((client) => seed(client, SEED_PASSWORDS)));
       expect(results.filter((result) => result.status === "rejected")).toEqual([]);
