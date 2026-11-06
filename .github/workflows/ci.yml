@@ -45,6 +45,10 @@ jobs:
       # The one manual step from the README, done here too.
       - run: cp .env.example .env
 
+      # The browser tests (3 runs x 3 browsers) and the load test create many accounts from this one address; the normal
+      # limit of 1000 accounts per hour per address would be used up before the load test. Only this CI run is changed.
+      - run: echo "REGISTER_MAX_PER_HOUR=20000" >> .env
+
       - name: Build the images
         run: docker compose build
 
@@ -61,6 +65,14 @@ jobs:
         run: pnpm e2e
       - name: Browser tests, run 3 of 3
         run: pnpm e2e
+
+      # Only for the log: how many accounts the browser tests created (the load test needs 200 more).
+      - name: Accounts created so far
+        run: |
+          set -a; . ./.env; set +a
+          for key in $(docker compose exec -T redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern 'rl:register*'); do
+            echo "$key = $(docker compose exec -T redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning get "$key")"
+          done
 
       - name: Load test (200 buyers, 10 seats)
         run: pnpm --filter @app/loadtest loadtest

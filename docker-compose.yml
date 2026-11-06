@@ -58,6 +58,8 @@ services:
       INTERNAL_SECRET: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
       # "true" when the site is served over https: the session cookie then gets the Secure flag.
       COOKIE_SECURE: ${COOKIE_SECURE}
+      # Accounts one address may create per hour. Raise it only for test runs from one address (see the CI file).
+      REGISTER_MAX_PER_HOUR: ${REGISTER_MAX_PER_HOUR:-1000}
     depends_on:
       migrate:
         condition: service_completed_successfully
