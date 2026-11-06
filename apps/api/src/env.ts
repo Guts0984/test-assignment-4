@@ -42,7 +42,7 @@ const envSchema = z.object({
   /** Login attempts (right or wrong) from one address in 10 seconds: stops guessing in parallel before the counters above notice. */
   LOGIN_BURST_MAX: positiveInt(30),
   /** New accounts from one visitor address per hour. */
-  REGISTER_MAX_PER_HOUR: positiveInt(300),
+  REGISTER_MAX_PER_HOUR: positiveInt(1000),
   LOGIN_FAILURES_WINDOW_SECONDS: positiveInt(900),
 
   /** How long a hold keeps its seats. */

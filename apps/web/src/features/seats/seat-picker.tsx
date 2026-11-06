@@ -163,7 +163,8 @@ export function SeatPicker({ eventId }: { eventId: number }) {
                         taken && seat.status === "sold" && "cursor-not-allowed bg-muted text-muted-foreground line-through",
                       )}
                     >
-                      {seat.number}
+                      {/* Your own held or bought seat shows a tick, as the legend says (the label above still names the seat). */}
+                      {!isChosen && seat.mine ? <span aria-hidden="true">✓</span> : seat.number}
                     </button>
                   );
                 })}

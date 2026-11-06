@@ -63,7 +63,7 @@ describe("event_seats: the status columns must agree with each other", () => {
 describe("event_seats: a seat belongs to the hall of its event", () => {
   it("refuses a seat of another hall, accepts a seat of the right hall", async () => {
     const event = await db.pool.query<{ id: number; hall_id: number }>(
-      `INSERT INTO events (title, description, city, starts_at, hall_id) VALUES ('Hall test', '', 'Kazan', now() + interval '3 days', 1) RETURNING id, hall_id`,
+      `INSERT INTO events (title, description, city, starts_at, hall_id) VALUES ('Hall test', '', 'Chicago', now() + interval '3 days', 1) RETURNING id, hall_id`,
     );
     const eventId = event.rows[0]?.id as number;
     const otherHall = await db.pool.query<{ id: number }>(`SELECT id FROM seats WHERE hall_id = 2 LIMIT 1`);
@@ -89,7 +89,7 @@ describe("plain value checks", () => {
     db.pool.query(`INSERT INTO seats (hall_id, "row", number) VALUES (1, $1, $2)`, [row, number]);
   const insertEvent = (title: string, description = "", version = 1) =>
     db.pool.query(
-      `INSERT INTO events (title, description, city, starts_at, hall_id, version) VALUES ($1, $2, 'Sochi', now() + interval '2 days', 1, $3)`,
+      `INSERT INTO events (title, description, city, starts_at, hall_id, version) VALUES ($1, $2, 'Miami', now() + interval '2 days', 1, $3)`,
       [title, description, version],
     );
 
@@ -257,7 +257,7 @@ describe("outbox: every change of an event leaves exactly one note", () => {
 
   it("insert, update and delete each write one note with the new version", async () => {
     const created = await db.pool.query<{ id: number }>(
-      `INSERT INTO events (title, description, city, starts_at, hall_id) VALUES ('Outbox', '', 'Sochi', now() + interval '2 days', 1) RETURNING id`,
+      `INSERT INTO events (title, description, city, starts_at, hall_id) VALUES ('Outbox', '', 'Miami', now() + interval '2 days', 1) RETURNING id`,
     );
     const id = created.rows[0]?.id as number;
     await db.pool.query(`UPDATE events SET title = 'Outbox 2' WHERE id = $1`, [id]);

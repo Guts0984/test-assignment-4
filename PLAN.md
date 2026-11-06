@@ -14,6 +14,12 @@ Where the assignment is unclear, the decision is written down in "Decisions" bel
 
 ## Where we are
 
+**Status (end of the overnight build): all 11 phases are implemented and verified.** The README holds the final description,
+the caching table, the decisions, the known limits and the map of the 21 acceptance checks. What follows below is the
+original plan, kept for the record.
+
+(Original text of this section:)
+
 Phase 0 is done: monorepo, NestJS `/health`, empty worker, Next.js shell, nginx (DNS refresh, page limit, cache,
 BYPASS), compose, CI, smoke e2e. Old assignment-3 code to port from is in `../_assignment3-reference`
 (cache, rate limiter, session store, password hasher, login guard, worker pipeline, `proxy.ts`, e2e patterns).

@@ -46,6 +46,9 @@ test("from the catalog to an order: register, choose seats, hold, pay - and the 
   await openSeats(page, event.id);
   await expect(page.locator(`[data-seat="${first}"]`)).toHaveAttribute("data-status", "mine");
   await expect(page.locator(`[data-seat="${second}"]`)).toHaveAttribute("data-status", "mine");
+  // the legend promises a tick for your own seats: it must really be on them
+  await expect(page.locator(`[data-seat="${first}"]`)).toHaveText("✓");
+  await expect(page.locator(`[data-seat="${second}"]`)).toHaveText("✓");
 });
 
 test("cancelling a hold frees the seats at once", async ({ page, context, request }) => {
@@ -70,7 +73,8 @@ test("seats can be chosen with the keyboard alone", async ({ page, context, requ
   const event = await randomEvent(request);
   await openSeats(page, event.id);
 
-  const start = freeSeats(page).first();
+  // a free seat whose right-hand neighbour is also free (earlier runs may have sold seats here)
+  const start = page.locator('[data-testid="seat-grid"] button[data-status="free"]:has(+ button[data-status="free"])').first();
   const startName = await start.getAttribute("data-seat");
   await start.focus();
   await page.keyboard.press("Space");

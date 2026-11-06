@@ -102,6 +102,23 @@ describe("the seat map", () => {
     expect(asNobody.text).not.toContain(holdId);
   });
 
+  it("a hold that has run out shows as FREE to everybody at once (no waiting for the worker), and is no longer 'mine'", async () => {
+    const eventId = freshEvent();
+    const [alice, bob] = await makePeople(2);
+    const [seatId] = await seatsOf(eventId, 1);
+    const created = holdOf(await hold(alice as Person, eventId, [seatId as number]));
+    const cellFor = async (who: Person | undefined) => {
+      const reply = await call(b.base, `/events/${eventId}/seats`, who ? { cookie: who.cookie } : {});
+      return seatMapSchema.parse(reply.body).rows.flatMap((row) => row.seats).find((seat) => seat.id === seatId);
+    };
+    expect(await cellFor(bob)).toMatchObject({ status: "held", mine: false });
+
+    await ageHold("id = $1", created.id); // ten minutes pass; the worker has not run
+    for (const who of [bob, alice, undefined]) expect(await cellFor(who), who ? "a user" : "a visitor").toMatchObject({ status: "free", mine: false });
+    const asAlice = seatMapSchema.parse((await call(a.base, `/events/${eventId}/seats`, { cookie: (alice as Person).cookie })).body);
+    expect(asAlice.myHoldIds).toEqual([]); // and her expired hold is not offered for payment any more
+  });
+
   it("is never stale: a change is in the very next read, on the other instance too", async () => {
     const eventId = freshEvent();
     const [alice] = await makePeople(1);

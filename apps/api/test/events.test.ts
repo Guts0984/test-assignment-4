@@ -93,10 +93,10 @@ describe("GET /events: the list", () => {
   });
 
   it("filters by city (any letter case) and the counts add up", async () => {
-    const moscow = await listOf("/events?city=moscow&limit=50");
-    expect(moscow.items.length).toBeGreaterThan(10);
-    expect(moscow.items.every((event) => event.city === "Moscow")).toBe(true);
-    expect((await listOf("/events?city=MOSCOW&limit=50")).items.length).toBe(moscow.items.length);
+    const newYork = await listOf("/events?city=new%20york&limit=50");
+    expect(newYork.items.length).toBeGreaterThan(10);
+    expect(newYork.items.every((event) => event.city === "New York")).toBe(true);
+    expect((await listOf("/events?city=NEW%20YORK&limit=50")).items.length).toBe(newYork.items.length);
     expect((await listOf("/events?city=Atlantis")).items).toEqual([]);
   });
 
@@ -225,7 +225,7 @@ describe("the two-level cache (acceptance checks 3 and 4)", () => {
 
   it("'not found' is remembered only briefly: an event that appears is found within a few seconds", async () => {
     expect((await call(a.base, "/events/9998")).status).toBe(404);
-    await sql.query(`INSERT INTO events (id, title, description, city, starts_at, hall_id) VALUES (9998, 'Late arrival', '', 'Sochi', now() + interval '5 days', 1)`);
+    await sql.query(`INSERT INTO events (id, title, description, city, starts_at, hall_id) VALUES (9998, 'Late arrival', '', 'Miami', now() + interval '5 days', 1)`);
     await new Promise((resolve) => setTimeout(resolve, 5500));
     expect((await call(a.base, "/events/9998")).status).toBe(200);
     expect((await call(b.base, "/events/9998")).status).toBe(200);

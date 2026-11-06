@@ -33,7 +33,7 @@ vi.mock("@/shared/lib/client-api", () => ({
 const { Catalog } = await import("@/features/events/catalog");
 const { Providers } = await import("@/shared/providers");
 
-const event = (id: number, title: string): EventDto => ({ id, title, description: "", city: "Kazan", startsAt: "2026-12-01T18:00:00.000Z", hall: { id: 1, name: "Main Hall" }, version: 1 });
+const event = (id: number, title: string): EventDto => ({ id, title, description: "", city: "Chicago", startsAt: "2026-12-01T18:00:00.000Z", hall: { id: 1, name: "Main Hall" }, version: 1 });
 const listOf = (...titles: string[]): EventList => ({ items: titles.map((title, i) => event(i + 1, title)), nextCursor: null });
 const answerFor = (search: string) => pending.find((p) => p.query.get("q") === search);
 

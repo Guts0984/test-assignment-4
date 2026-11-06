@@ -2,7 +2,7 @@ import type { Db } from "./client";
 import { Role } from "./generated/client";
 import { hashPassword } from "./password";
 
-export const CITIES = ["Moscow", "Saint Petersburg", "Kazan", "Novosibirsk", "Yekaterinburg", "Sochi"] as const;
+export const CITIES = ["New York", "Los Angeles", "Chicago", "Houston", "Seattle", "Miami"] as const;
 
 /** The two halls required by the assignment: 8 x 15 = 120 seats and 10 x 20 = 200 seats. */
 export const HALLS = [

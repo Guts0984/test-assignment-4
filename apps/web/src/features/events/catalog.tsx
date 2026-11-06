@@ -17,7 +17,7 @@ import { TextField } from "@/shared/ui/text-field";
 import { EventFacts } from "./event-summary";
 import { filtersToQuery, readFilters } from "./filters";
 
-export const CITIES = ["Moscow", "Saint Petersburg", "Kazan", "Novosibirsk", "Yekaterinburg", "Sochi"] as const;
+export const CITIES = ["New York", "Los Angeles", "Chicago", "Houston", "Seattle", "Miami"] as const;
 
 /**
  * The catalog. The filters live in the address (so a link or a reload keeps them); typing in the search box changes the
@@ -86,7 +86,7 @@ export function Catalog({ initialPage }: { initialPage: EventList | null }) {
         <ul className="grid gap-3 sm:grid-cols-2" data-testid="event-list">
           {events.map((event) => (
             <li key={event.id}>
-              <Card className="h-full transition-shadow hover:shadow-md">
+              <Card className="relative h-full transition-shadow hover:shadow-md">
                 <CardContent className="space-y-2 pt-4">
                   <h2 className="text-lg font-medium leading-snug">
                     <Link href={`/events/${event.id}`} className="after:absolute after:inset-0 hover:underline">
